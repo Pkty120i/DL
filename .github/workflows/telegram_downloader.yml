@@ -41,7 +41,8 @@ jobs:
           # ──────────────────────────────────────
       # قدم اول: حذف پوشه downloads (درست مثل دکمه Delete directory)
       # ──────────────────────────────────────
-      - name: 🗑️ حذف پوشهٔ downloads (شبیه‌سازی Delete directory)
+
+      - name: 🗑️ حذف پوشهٔ downloads (درست مثل Delete directory)
         if: github.event.inputs.clean_previous == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -59,27 +60,14 @@ jobs:
           fi
           echo "   Commit: $COMMIT_SHA"
 
-          echo "📡 دریافت درخت فعلی..."
+          echo "📡 دریافت SHA درخت فعلی..."
           TREE_SHA=$(curl -s -H "$AUTH" -H "$ACCEPT" "$API/git/commits/$COMMIT_SHA" | jq -r '.tree.sha')
           echo "   Tree: $TREE_SHA"
 
-          echo "📡 دریافت محتوای درخت..."
-          TREE_ENTRIES=$(curl -s -H "$AUTH" -H "$ACCEPT" "$API/git/trees/$TREE_SHA?recursive=1" | jq '.tree')
-          if [ "$TREE_ENTRIES" = "null" ] || [ -z "$TREE_ENTRIES" ]; then
-            echo "📂 درخت خالی است. نیازی به حذف نیست."; exit 0
-          fi
-
-          # بررسی وجود فایل‌های downloads
-          HAS_DOWNLOADS=$(echo "$TREE_ENTRIES" | jq '[.[] | select(.path | startswith("downloads/"))] | length')
-          if [ "$HAS_DOWNLOADS" -eq 0 ]; then
-            echo "📂 پوشهٔ downloads وجود ندارد."; exit 0
-          fi
-
-          echo "🔍 حذف مسیرهای downloads... ($HAS_DOWNLOADS مورد پیدا شد)"
-
-          # ساخت درخت جدید بدون فایل‌های downloads
-          NEW_TREE_PAYLOAD=$(echo "$TREE_ENTRIES" | jq '[.[] | select(.path | startswith("downloads/") | not) | {path: .path, mode: .mode, type: .type, sha: .sha}] | {tree: .}')
-          NEW_TREE_SHA=$(curl -s -X POST -H "$AUTH" -H "$ACCEPT" -d "$NEW_TREE_PAYLOAD" "$API/git/trees" | jq -r '.sha')
+          echo "📝 ایجاد درخت جدید (فقط با حذف downloads)..."
+          NEW_TREE_SHA=$(curl -s -X POST -H "$AUTH" -H "$ACCEPT" \
+            -d "{\"base_tree\":\"${TREE_SHA}\",\"tree\":[{\"path\":\"downloads\",\"mode\":\"040000\",\"type\":\"tree\",\"sha\":null}]}" \
+            "$API/git/trees" | jq -r '.sha')
           if [ -z "$NEW_TREE_SHA" ] || [ "$NEW_TREE_SHA" = "null" ]; then
             echo "❌ ساخت درخت جدید ناموفق."; exit 1
           fi
@@ -87,7 +75,7 @@ jobs:
 
           echo "📝 ایجاد commit حذف..."
           NEW_COMMIT_SHA=$(curl -s -X POST -H "$AUTH" -H "$ACCEPT" \
-            -d "{\"message\":\"پاک‌سازی پوشهٔ downloads\",\"tree\":\"${NEW_TREE_SHA}\",\"parents\":[\"${COMMIT_SHA}\"]}" \
+            -d "{\"message\":\"حذف پوشه downloads\",\"tree\":\"${NEW_TREE_SHA}\",\"parents\":[\"${COMMIT_SHA}\"]}" \
             "$API/git/commits" | jq -r '.sha')
           if [ -z "$NEW_COMMIT_SHA" ] || [ "$NEW_COMMIT_SHA" = "null" ]; then
             echo "❌ ایجاد commit ناموفق."; exit 1
@@ -105,7 +93,7 @@ jobs:
             echo "$PATCH_RESULT"
             exit 1
           fi
-          
+     
       # ──────────────────────────────────────
       # قدم دوم: دریافت شاخه (حالا سبک)
       # ──────────────────────────────────────
